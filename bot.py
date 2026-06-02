@@ -7,8 +7,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-import google.generativeai as genai
-
+import google.genai as genai
 from aiohttp import web
 import aiohttp_cors
 
