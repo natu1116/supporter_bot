@@ -1,21 +1,29 @@
 import os
 import time
+import asyncio
+from datetime import datetime, timedelta, timezone
+
 import discord
 from discord.ext import commands
 from discord import app_commands
+
 import google.generativeai as genai
 
+from aiohttp import web
+import aiohttp_cors
+
 # =========================
-#  4つの Gemini API キー
+#  環境変数
 # =========================
+DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
+PORT = int(os.environ.get("PORT", 10000))
+
 GEMINI_KEYS = [
     os.environ.get("GEMINI_API_KEY_1"),
     os.environ.get("GEMINI_API_KEY_2"),
     os.environ.get("GEMINI_API_KEY_3"),
     os.environ.get("GEMINI_API_KEY_4"),
 ]
-
-DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 
 # =========================
 #  Bot 基本設定
@@ -33,18 +41,17 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 support_channel_id = None
 supporter_role_id = None
 
-# ticket_states[channel_id] = {"ai_enabled": bool, "assigned": bool}
-ticket_states = {}
+ticket_states = {}  # {channel_id: {"ai_enabled": bool, "assigned": bool}}
 
 AI_STOP_WORD = "!human"
 
 
 # =========================
-#  Gemini フォールバック関数
+#  Gemini フォールバック
 # =========================
 async def ai_reply_with_fallback(prompt: str) -> str:
     for index, key in enumerate(GEMINI_KEYS):
-        if key is None:
+        if not key:
             continue
 
         try:
@@ -69,6 +76,54 @@ async def ai_reply_with_fallback(prompt: str) -> str:
             continue
 
     return "現在AIが利用できません。後ほどもう一度お試しください。"
+
+
+# =========================
+#  Webサーバー（Render用）
+# =========================
+async def handle_ping(request):
+    JST = timezone(timedelta(hours=+9), "JST")
+    now = datetime.now(JST).strftime("%Y/%m/%d %H:%M:%S %Z")
+
+    active_keys = len([k for k in GEMINI_KEYS if k])
+
+    print(f"🌐 [Web Ping] {now} | 有効Geminiキー: {active_keys} | OK")
+
+    return web.Response(text="Bot is running and ready for Gemini requests.")
+
+
+def setup_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+
+    cors = aiohttp_cors.setup(app, defaults={
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True,
+            allow_methods=["GET"],
+            allow_headers=("X-Requested-With", "Content-Type"),
+        )
+    })
+
+    for route in list(app.router.routes()):
+        cors.add(route)
+
+    return app
+
+
+async def start_web_server():
+    web_app = setup_web_server()
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    print(f"Webサーバーをポート {PORT} で起動します (Render対応)...")
+
+    try:
+        await site.start()
+    except Exception as e:
+        print(f"Webサーバー起動失敗: {e}")
+
+    await asyncio.Future()  # 永久待機
 
 
 # =========================
@@ -133,7 +188,6 @@ class AssignView(discord.ui.View):
                 ephemeral=True
             )
 
-        # 状態更新
         state = ticket_states.get(self.ticket_channel_id, {"ai_enabled": True, "assigned": False})
         state["assigned"] = True
         state["ai_enabled"] = False
@@ -142,17 +196,14 @@ class AssignView(discord.ui.View):
         ticket_channel = guild.get_channel(self.ticket_channel_id)
         support_channel = guild.get_channel(support_channel_id)
 
-        # チケット内通知
         await ticket_channel.send(
             f"{ticket_channel.mention} は今後 {interaction.user.mention} が対応します。"
         )
 
-        # サポートチャンネル通知
         await support_channel.send(
             f"{ticket_channel.mention} は {interaction.user.mention} が担当します。"
         )
 
-        # ボタン無効化
         button.disabled = True
         await interaction.response.edit_message(view=self)
 
@@ -196,7 +247,6 @@ async def on_message(message: discord.Message):
     ticket_id = channel.id
     state = ticket_states.get(ticket_id, {"ai_enabled": True, "assigned": False})
 
-    # 停止ワード
     if message.content.strip() == AI_STOP_WORD:
         state["ai_enabled"] = False
         ticket_states[ticket_id] = state
@@ -211,13 +261,29 @@ async def on_message(message: discord.Message):
         )
         return
 
-    # AI応答
     if state["ai_enabled"] and not state["assigned"]:
         reply = await ai_reply_with_fallback(message.content)
         await channel.send(reply)
 
 
 # =========================
-#  Bot 起動
+#  メイン（Bot + Webサーバー同時起動）
 # =========================
-bot.run(DISCORD_TOKEN)
+async def main():
+    if not DISCORD_TOKEN:
+        print("DISCORD_TOKEN が設定されていません。")
+        return
+
+    web_task = asyncio.create_task(start_web_server())
+    bot_task = asyncio.create_task(bot.start(DISCORD_TOKEN))
+
+    await asyncio.gather(web_task, bot_task)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Bot and Web Server stopped.")
+    except Exception as e:
+        print(f"メイン実行中にエラー: {e}")
