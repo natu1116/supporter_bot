@@ -7,7 +7,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-import google.genai as genai
+from google.genai import Client
+from google.genai.types import Content, Part
+
 from aiohttp import web
 import aiohttp_cors
 
@@ -47,7 +49,7 @@ AI_STOP_WORD = "!human"
 
 
 # =========================
-#  Gemini フォールバック
+#  Gemini フォールバック（google.genai）
 # =========================
 async def ai_reply_with_fallback(prompt: str) -> str:
     for index, key in enumerate(GEMINI_KEYS):
@@ -55,14 +57,19 @@ async def ai_reply_with_fallback(prompt: str) -> str:
             continue
 
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel("gemini-pro")
-            res = model.generate_content(prompt)
+            client = Client(api_key=key)
 
-            if hasattr(res, "text"):
-                return res.text
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    Content(
+                        role="user",
+                        parts=[Part.from_text(prompt)]
+                    )
+                ]
+            )
 
-            return "すみません、返答を生成できませんでした。"
+            return response.text
 
         except Exception as e:
             err = str(e)
