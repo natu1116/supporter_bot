@@ -42,6 +42,7 @@ support_channel_id = None
 supporter_role_id = None
 
 ticket_states = {}  # {channel_id: {"ai_enabled": bool, "assigned": bool}}
+ticket_logs = {}    # {channel_id: ["User: ...", "AI: ..."]}
 
 AI_STOP_WORD = "!human"
 
@@ -76,6 +77,34 @@ async def ai_reply_with_fallback(prompt: str) -> str:
             continue
 
     return "現在AIが利用できません。後ほどもう一度お試しください。"
+
+
+# =========================
+#  AI 会話履歴付き応答
+# =========================
+async def ai_reply_with_history(channel_id: int, user_message: str) -> str:
+    if channel_id not in ticket_logs:
+        ticket_logs[channel_id] = []
+
+    history_text = "\n".join(ticket_logs[channel_id])
+
+    prompt = f"""
+以下はこのチケットの会話履歴です。
+これを踏まえて、最後のユーザー発言に返答してください。
+
+--- 会話履歴 ---
+{history_text}
+
+--- 今回のユーザー発言 ---
+User: {user_message}
+"""
+
+    reply = await ai_reply_with_fallback(prompt)
+
+    ticket_logs[channel_id].append(f"User: {user_message}")
+    ticket_logs[channel_id].append(f"AI: {reply}")
+
+    return reply
 
 
 # =========================
@@ -123,7 +152,7 @@ async def start_web_server():
     except Exception as e:
         print(f"Webサーバー起動失敗: {e}")
 
-    await asyncio.Future()  # 永久待機
+    await asyncio.Future()
 
 
 # =========================
@@ -222,11 +251,22 @@ async def addassign(interaction: discord.Interaction):
         )
 
     ticket_states[channel.id] = {"ai_enabled": True, "assigned": False}
+    ticket_logs[channel.id] = []
 
     await interaction.response.send_message(
         "担当者を決めてください。",
         view=AssignView(channel.id)
     )
+
+
+# =========================
+#  チャンネル削除時 → 会話ログ削除
+# =========================
+@bot.event
+async def on_guild_channel_delete(channel):
+    if channel.id in ticket_logs:
+        del ticket_logs[channel.id]
+        print(f"[LOG] チケット {channel.name} の会話履歴を削除しました。")
 
 
 # =========================
@@ -262,7 +302,7 @@ async def on_message(message: discord.Message):
         return
 
     if state["ai_enabled"] and not state["assigned"]:
-        reply = await ai_reply_with_fallback(message.content)
+        reply = await ai_reply_with_history(ticket_id, message.content)
         await channel.send(reply)
 
 
