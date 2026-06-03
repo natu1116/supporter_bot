@@ -51,10 +51,15 @@ AI_STOP_WORD = "!human"
 # =========================
 #  Gemini フォールバック（google.genai）
 # =========================
+
+
 async def ai_reply_with_fallback(prompt: str) -> str:
     for index, key in enumerate(GEMINI_KEYS):
         if not key:
+            print(f"[Gemini] APIキー {index+1} が設定されていません")
             continue
+
+        print(f"[Gemini] APIキー {index+1} を使用します")
 
         try:
             client = Client(api_key=key)
@@ -69,9 +74,15 @@ async def ai_reply_with_fallback(prompt: str) -> str:
                 ]
             )
 
+            print(f"[Gemini] APIキー {index+1} 成功")
             return response.text
 
         except Exception as e:
+            print(f"[Gemini] APIキー {index+1} で例外発生:")
+            print("----- ERROR START -----")
+            print(e)
+            print("----- ERROR END -----")
+
             err = str(e)
 
             if "429" in err or "rate" in err.lower():
@@ -79,10 +90,12 @@ async def ai_reply_with_fallback(prompt: str) -> str:
                 time.sleep(0.5)
                 continue
 
-            print(f"[Gemini] APIキー {index+1} でエラー: {err}")
+            print(f"[Gemini] APIキー {index+1} が通常エラー → 次へ")
             continue
 
+    print("[Gemini] 全APIキー失敗 → フォールバック終了")
     return "現在AIが利用できません。後ほどもう一度お試しください。"
+
 
 
 # =========================
