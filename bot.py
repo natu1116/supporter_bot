@@ -53,9 +53,6 @@ AI_STOP_WORD = "!human"
 # =========================
 
 
-from google.genai import Client
-from google.genai.types import Content, Part
-
 async def ai_reply_with_fallback(prompt: str) -> str:
     loop = asyncio.get_event_loop()
 
@@ -66,35 +63,34 @@ async def ai_reply_with_fallback(prompt: str) -> str:
         try:
             client = Client(api_key=key)
 
-            # 同期APIをスレッドで実行
             def run_sync():
                 try:
                     return client.models.generate_content(
                         model="gemini-2.0-flash",
                         contents=[
-                            Content(
-                                role="user",
-                                parts=[Part.from_text(prompt)]
-                            )
+                            {
+                                "role": "user",
+                                "parts": [
+                                    {"text": prompt}
+                                ]
+                            }
                         ]
                     )
                 except Exception as inner_e:
-                    # 内部例外をそのまま Discord に返す
                     return f"[Gemini] generate_content 内部例外:\n{inner_e}"
 
             response = await loop.run_in_executor(None, run_sync)
 
-            # 内部例外ならそのまま返す
             if isinstance(response, str):
                 return response
 
             return response.text
 
         except Exception as e:
-            # 外側の例外も Discord に返す
             return f"[Gemini] APIキー {index+1} で例外発生:\n{e}"
 
     return "現在AIが利用できません。後ほどもう一度お試しください。"
+
 
 
 
