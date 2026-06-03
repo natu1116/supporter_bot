@@ -53,44 +53,47 @@ AI_STOP_WORD = "!human"
 # =========================
 
 
+from google.genai import Client
+from google.genai.types import Content, Part
+
 async def ai_reply_with_fallback(prompt: str) -> str:
     loop = asyncio.get_event_loop()
 
     for index, key in enumerate(GEMINI_KEYS):
         if not key:
-            print(f"[Gemini] APIキー {index+1} が設定されていません")
-            continue
-
-        print(f"[Gemini] APIキー {index+1} を使用します")
+            return f"[Gemini] APIキー {index+1} が設定されていません"
 
         try:
             client = Client(api_key=key)
 
             # 同期APIをスレッドで実行
             def run_sync():
-                return client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[
-                        Content(
-                            role="user",
-                            parts=[Part.from_text(prompt)]
-                        )
-                    ]
-                )
+                try:
+                    return client.models.generate_content(
+                        model="gemini-2.0-flash",
+                        contents=[
+                            Content(
+                                role="user",
+                                parts=[Part.from_text(prompt)]
+                            )
+                        ]
+                    )
+                except Exception as inner_e:
+                    # 内部例外をそのまま Discord に返す
+                    return f"[Gemini] generate_content 内部例外:\n{inner_e}"
 
             response = await loop.run_in_executor(None, run_sync)
 
-            print(f"[Gemini] APIキー {index+1} 成功")
+            # 内部例外ならそのまま返す
+            if isinstance(response, str):
+                return response
+
             return response.text
 
         except Exception as e:
-            print(f"[Gemini] APIキー {index+1} で例外発生:")
-            print("----- ERROR START -----")
-            print(e)
-            print("----- ERROR END -----")
-            continue
+            # 外側の例外も Discord に返す
+            return f"[Gemini] APIキー {index+1} で例外発生:\n{e}"
 
-    print("[Gemini] 全APIキー失敗 → フォールバック終了")
     return "現在AIが利用できません。後ほどもう一度お試しください。"
 
 
