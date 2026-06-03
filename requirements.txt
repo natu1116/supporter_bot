@@ -2,3 +2,7 @@ discord.py
 google-genai
 aiohttp
 aiohttp_cors 
+google-api-core>=2.15.0
+google-auth>=2.15.0
+protobuf>=4.25.0
+googleapis-common-protos>=1.63.0
