@@ -54,6 +54,8 @@ AI_STOP_WORD = "!human"
 
 
 async def ai_reply_with_fallback(prompt: str) -> str:
+    loop = asyncio.get_event_loop()
+
     for index, key in enumerate(GEMINI_KEYS):
         if not key:
             print(f"[Gemini] APIキー {index+1} が設定されていません")
@@ -64,15 +66,19 @@ async def ai_reply_with_fallback(prompt: str) -> str:
         try:
             client = Client(api_key=key)
 
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[
-                    Content(
-                        role="user",
-                        parts=[Part.from_text(prompt)]
-                    )
-                ]
-            )
+            # 同期APIをスレッドで実行
+            def run_sync():
+                return client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[
+                        Content(
+                            role="user",
+                            parts=[Part.from_text(prompt)]
+                        )
+                    ]
+                )
+
+            response = await loop.run_in_executor(None, run_sync)
 
             print(f"[Gemini] APIキー {index+1} 成功")
             return response.text
@@ -82,15 +88,6 @@ async def ai_reply_with_fallback(prompt: str) -> str:
             print("----- ERROR START -----")
             print(e)
             print("----- ERROR END -----")
-
-            err = str(e)
-
-            if "429" in err or "rate" in err.lower():
-                print(f"[Gemini] APIキー {index+1} がレート制限 → 次へ")
-                time.sleep(0.5)
-                continue
-
-            print(f"[Gemini] APIキー {index+1} が通常エラー → 次へ")
             continue
 
     print("[Gemini] 全APIキー失敗 → フォールバック終了")
