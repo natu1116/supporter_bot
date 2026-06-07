@@ -19,12 +19,7 @@ import aiohttp_cors
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 PORT = int(os.environ.get("PORT", 10000))
 
-GEMINI_KEYS = [
-    os.environ.get("GEMINI_API_KEY_1"),
-    os.environ.get("GEMINI_API_KEY_2"),
-    os.environ.get("GEMINI_API_KEY_3"),
-    os.environ.get("GEMINI_API_KEY_4"),
-]
+
 
 # =========================
 #  Bot 基本設定
@@ -49,7 +44,7 @@ AI_STOP_WORD = "!human"
 
 
 # =========================
-#  Gemini フォールバック（google.genai）
+#  Groqフォールバック
 # =========================
 
 
@@ -57,16 +52,25 @@ AI_STOP_WORD = "!human"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-async def ai_reply_with_fallback(prompt: str) -> str:
-    try:
-        res = groq_client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return res.choices[0].message.content
+GROQ_MODELS = [
+    "llama-3.1-70b-versatile",  # 最強・高品質
+    "llama-3.1-8b-instant",     # 高速・軽量
+    "llama3-70b-8192"           # 旧モデルだが安定
+]
 
-    except Exception as e:
-        return f"[Groq] エラーが発生しました:\n{e}"
+async def ai_reply_with_fallback(prompt: str) -> str:
+    for model in GROQ_MODELS:
+        try:
+            res = groq_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return res.choices[0].message.content
+
+        except Exception as e:
+            print(f"[Groq] {model} 失敗: {e}")
+
+    return "現在AIが利用できません。後ほどもう一度お試しください。"
 
 
 
@@ -103,15 +107,17 @@ User: {user_message}
 # =========================
 #  Webサーバー（Render用）
 # =========================
+
 async def handle_ping(request):
     JST = timezone(timedelta(hours=+9), "JST")
     now = datetime.now(JST).strftime("%Y/%m/%d %H:%M:%S %Z")
 
-    active_keys = len([k for k in GEMINI_KEYS if k])
+    active_key = 1 if GROQ_API_KEY else 0
 
-    print(f"🌐 [Web Ping] {now} | 有効Geminiキー: {active_keys} | OK")
+    print(f"🌐 [Web Ping] {now} | 有効Groqキー: {active_key} | OK")
 
-    return web.Response(text="Bot is running and ready for Gemini requests.")
+    return web.Response(text="Bot is running and ready for Groq requests.")
+
 
 
 def setup_web_server():
