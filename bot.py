@@ -59,11 +59,21 @@ GROQ_MODELS = [
 ]
 
 async def ai_reply_with_fallback(prompt: str) -> str:
+    system_prompt = (
+        "あなたはサポート用AIです。"
+        "会話だけでは問題が解決不可能だと判断した場合、"
+        "必ず「!human」とだけ送信してください。"
+        "それ以外の場面では通常通りユーザーに返答してください。"
+    )
+    
     for model in GROQ_MODELS:
         try:
             res = groq_client.chat.completions.create(
                 model=model,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
             )
             return res.choices[0].message.content
 
@@ -71,6 +81,7 @@ async def ai_reply_with_fallback(prompt: str) -> str:
             print(f"[Groq] {model} 失敗: {e}")
 
     return "現在AIが利用できません。後ほどもう一度お試しください。"
+
 
 
 
