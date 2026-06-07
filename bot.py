@@ -7,8 +7,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from google.genai import Client
-from google.genai.types import Content, Part
+from groq import Groq
+
 
 from aiohttp import web
 import aiohttp_cors
@@ -53,43 +53,21 @@ AI_STOP_WORD = "!human"
 # =========================
 
 
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+groq_client = Groq(api_key=GROQ_API_KEY)
+
 async def ai_reply_with_fallback(prompt: str) -> str:
-    loop = asyncio.get_event_loop()
+    try:
+        res = groq_client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return res.choices[0].message.content
 
-    for index, key in enumerate(GEMINI_KEYS):
-        if not key:
-            return f"[Gemini] APIキー {index+1} が設定されていません"
+    except Exception as e:
+        return f"[Groq] エラーが発生しました:\n{e}"
 
-        try:
-            client = Client(api_key=key)
-
-            def run_sync():
-                try:
-                    return client.models.generate_content(
-                        model="gemini-2.0-flash",
-                        contents=[
-                            {
-                                "role": "user",
-                                "parts": [
-                                    {"text": prompt}
-                                ]
-                            }
-                        ]
-                    )
-                except Exception as inner_e:
-                    return f"[Gemini] generate_content 内部例外:\n{inner_e}"
-
-            response = await loop.run_in_executor(None, run_sync)
-
-            if isinstance(response, str):
-                return response
-
-            return response.text
-
-        except Exception as e:
-            return f"[Gemini] APIキー {index+1} で例外発生:\n{e}"
-
-    return "現在AIが利用できません。後ほどもう一度お試しください。"
 
 
 
