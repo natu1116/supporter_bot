@@ -121,6 +121,9 @@ User: {user_message}
     return reply
 
 
+
+
+
 # =========================
 #  Webサーバー（Render用）
 # =========================
@@ -275,6 +278,30 @@ async def addassign(interaction: discord.Interaction):
     )
 
 
+
+# =========================
+#  担当ボタン自動作成
+# =========================
+@bot.event
+async def on_guild_channel_create(channel):
+    # チャンネル名が ticket- で始まるか確認
+    if not channel.name.startswith("ticket-"):
+        return
+
+    # チケット状態を初期化
+    ticket_states[channel.id] = {"ai_enabled": True, "assigned": False}
+    ticket_logs[channel.id] = []
+
+    # 担当ボタンを送信
+    try:
+        await channel.send(
+            "担当者を決めてください。",
+            view=AssignView(channel.id)
+        )
+        print(f"[INIT] {channel.name} に担当ボタンを自動追加しました。")
+    except Exception as e:
+        print(f"[ERROR] 担当ボタン送信失敗: {e}")
+        
 # =========================
 #  チャンネル削除時 → 会話ログ削除
 # =========================
